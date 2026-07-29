@@ -14,6 +14,7 @@ import { upsertSchedule } from '@/features/schedules/api/schedules'
 import { ScheduleTimingFields } from '@/features/schedules/components/ScheduleTimingFields'
 import type { RecurrenceType, ScheduleMode } from '@/features/schedules/types/schedule'
 import { buildUpsertScheduleInput } from '@/features/schedules/utils/build-upsert-schedule'
+import { toUserErrorMessage } from '@/utils/error-message'
 
 export default function NewPostScreen() {
   const router = useRouter()
@@ -69,21 +70,30 @@ export default function NewPostScreen() {
         ),
       )
 
-      await upsertSchedule(
-        buildUpsertScheduleInput(post.id, {
-          scheduleMode,
-          scheduledAt,
-          recurrenceType,
-          recurrenceInterval,
-          recurrenceWeekday,
-          recurrenceDayOfMonth,
-          endAt,
-        }),
-      )
+      try {
+        await upsertSchedule(
+          buildUpsertScheduleInput(post.id, {
+            scheduleMode,
+            scheduledAt,
+            recurrenceType,
+            recurrenceInterval,
+            recurrenceWeekday,
+            recurrenceDayOfMonth,
+            endAt,
+          }),
+        )
+      } catch (scheduleError) {
+        Alert.alert(
+          '投稿は保存しましたが、予約設定に失敗しました',
+          toUserErrorMessage(scheduleError),
+        )
+        router.back()
+        return
+      }
 
       router.back()
     } catch (error) {
-      Alert.alert('保存に失敗しました', error instanceof Error ? error.message : 'Unknown error')
+      Alert.alert('保存に失敗しました', toUserErrorMessage(error))
     } finally {
       setIsSaving(false)
     }

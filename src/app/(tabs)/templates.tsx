@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 
 import { createPost } from '@/features/posts/api/posts'
 import { getTemplates, type Template } from '@/features/templates/api/templates'
+import { toUserErrorMessage } from '@/utils/error-message'
 
 export default function TemplatesScreen() {
   const router = useRouter()
@@ -22,10 +23,7 @@ export default function TemplatesScreen() {
           if (active) setTemplates(data)
         } catch (error) {
           if (active) {
-            Alert.alert(
-              '読み込みに失敗しました',
-              error instanceof Error ? error.message : 'Unknown error',
-            )
+            Alert.alert('読み込みに失敗しました', toUserErrorMessage(error))
           }
         } finally {
           if (active) setIsLoading(false)
@@ -54,10 +52,7 @@ export default function TemplatesScreen() {
         params: { id: post.id },
       })
     } catch (error) {
-      Alert.alert(
-        '下書きの作成に失敗しました',
-        error instanceof Error ? error.message : 'Unknown error',
-      )
+      Alert.alert('下書きの作成に失敗しました', toUserErrorMessage(error))
     } finally {
       setIsCreating(false)
     }

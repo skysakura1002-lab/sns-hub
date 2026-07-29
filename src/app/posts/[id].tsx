@@ -18,11 +18,15 @@ import {
   type BodyEditorKey,
 } from '@/features/posts/components/PostBodyEditors'
 import { SOCIAL_PROVIDERS, type SocialProvider } from '@/features/posts/types/post-target'
+import { getPostRuns } from '@/features/schedules/api/post-runs'
 import { getScheduleByPostId, upsertSchedule } from '@/features/schedules/api/schedules'
+import { PostRunHistory } from '@/features/schedules/components/PostRunHistory'
 import { ScheduleTimingFields } from '@/features/schedules/components/ScheduleTimingFields'
+import type { PostRun } from '@/features/schedules/types/post-run'
 import type { RecurrenceType, ScheduleMode } from '@/features/schedules/types/schedule'
 import { buildUpsertScheduleInput } from '@/features/schedules/utils/build-upsert-schedule'
 import { createTemplate } from '@/features/templates/api/templates'
+import { toUserErrorMessage } from '@/utils/error-message'
 
 export default function PostDetailScreen() {
   const router = useRouter()
@@ -44,6 +48,7 @@ export default function PostDetailScreen() {
   const [recurrenceWeekday, setRecurrenceWeekday] = useState<number | null>(null)
   const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState<number | null>(null)
   const [endAt, setEndAt] = useState<Date | null>(null)
+  const [postRuns, setPostRuns] = useState<PostRun[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -100,12 +105,16 @@ export default function PostDetailScreen() {
           setRecurrenceType('none')
           setEndAt(null)
         }
+
+        try {
+          const runs = await getPostRuns(id)
+          setPostRuns(runs)
+        } catch {
+          setPostRuns([])
+        }
       } catch (error) {
         console.error(error)
-        Alert.alert(
-          '投稿を取得できませんでした',
-          error instanceof Error ? error.message : 'Unknown error',
-        )
+        Alert.alert('投稿を取得できませんでした', toUserErrorMessage(error))
       } finally {
         setIsLoading(false)
       }
@@ -158,11 +167,20 @@ export default function PostDetailScreen() {
         ),
       )
 
-      await upsertSchedule(buildUpsertScheduleInput(id, scheduleFormState))
+      try {
+        await upsertSchedule(buildUpsertScheduleInput(id, scheduleFormState))
+      } catch (scheduleError) {
+        Alert.alert(
+          '投稿は保存しましたが、予約設定に失敗しました',
+          toUserErrorMessage(scheduleError),
+        )
+        router.back()
+        return
+      }
 
       router.back()
     } catch (error) {
-      Alert.alert('更新に失敗しました', error instanceof Error ? error.message : 'Unknown error')
+      Alert.alert('更新に失敗しました', toUserErrorMessage(error))
     } finally {
       setIsSaving(false)
     }
@@ -193,7 +211,7 @@ export default function PostDetailScreen() {
         },
       })
     } catch (error) {
-      Alert.alert('複製に失敗しました', error instanceof Error ? error.message : 'Unknown error')
+      Alert.alert('複製に失敗しました', toUserErrorMessage(error))
     }
   }
 
@@ -207,7 +225,7 @@ export default function PostDetailScreen() {
 
       Alert.alert('テンプレートに保存しました')
     } catch (error) {
-      Alert.alert('保存に失敗しました', error instanceof Error ? error.message : 'Unknown error')
+      Alert.alert('保存に失敗しました', toUserErrorMessage(error))
     }
   }
 
@@ -228,10 +246,7 @@ export default function PostDetailScreen() {
               await deletePost(id)
               router.back()
             } catch (error) {
-              Alert.alert(
-                '削除に失敗しました',
-                error instanceof Error ? error.message : 'Unknown error',
-              )
+              Alert.alert('削除に失敗しました', toUserErrorMessage(error))
             }
           })()
         },
@@ -281,6 +296,8 @@ export default function PostDetailScreen() {
         endAt={endAt}
         onChangeEndAt={setEndAt}
       />
+
+      <PostRunHistory runs={postRuns} />
 
       <View style={styles.actions}>
         <Button

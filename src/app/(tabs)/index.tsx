@@ -5,10 +5,18 @@ import { Link, useFocusEffect } from 'expo-router'
 import { signOut } from '@/features/auth/api/auth'
 import { useSession } from '@/features/auth/hooks/useSession'
 import { getPosts, type Post } from '@/features/posts/api/posts'
+import { getSchedulesByPostIds } from '@/features/schedules/api/schedules'
+import type { Schedule } from '@/features/schedules/types/schedule'
+import { getScheduleListInfo } from '@/features/schedules/utils/schedule-label'
+import { toUserErrorMessage } from '@/utils/error-message'
+
+type PostListItem = Post & {
+  schedule: Schedule | null
+}
 
 export default function HomeScreen() {
   const { session } = useSession()
-  const [posts, setPosts] = useState<Post[]>([])
+  const [posts, setPosts] = useState<PostListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -20,11 +28,21 @@ export default function HomeScreen() {
         try {
           setIsLoading(true)
           setErrorMessage(null)
-          const data = await getPosts()
-          if (active) setPosts(data)
+
+          const postRows = await getPosts()
+          const scheduleMap = await getSchedulesByPostIds(postRows.map((post) => post.id))
+
+          if (active) {
+            setPosts(
+              postRows.map((post) => ({
+                ...post,
+                schedule: scheduleMap[post.id] ?? null,
+              })),
+            )
+          }
         } catch (error) {
           if (active) {
-            setErrorMessage(error instanceof Error ? error.message : '読み込みに失敗しました')
+            setErrorMessage(toUserErrorMessage(error))
           }
         } finally {
           if (active) setIsLoading(false)
@@ -56,23 +74,57 @@ export default function HomeScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={!isLoading ? <Text style={styles.empty}>投稿がありません</Text> : null}
-        renderItem={({ item }) => (
-          <Link
-            asChild
-            href={{
-              pathname: '/posts/[id]',
-              params: { id: item.id },
-            }}
-          >
-            <Pressable style={styles.item}>
-              <Text style={styles.itemTitle}>{item.title || '無題'}</Text>
-              <Text numberOfLines={2} style={styles.itemBody}>
-                {item.body}
-              </Text>
-              <Text style={styles.itemStatus}>{item.status}</Text>
-            </Pressable>
-          </Link>
-        )}
+        renderItem={({ item }) => {
+          const scheduleInfo = getScheduleListInfo(item.schedule)
+
+          return (
+            <Link
+              asChild
+              href={{
+                pathname: '/posts/[id]',
+                params: { id: item.id },
+              }}
+            >
+              <Pressable style={styles.item}>
+                <View style={styles.itemHeader}>
+                  <Text style={styles.itemTitle}>{item.title || '無題'}</Text>
+                  <View style={styles.badges}>
+                    <View style={[styles.badge, styles.badgeMuted]}>
+                      <Text style={styles.badgeText}>{item.status}</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.badge,
+                        scheduleInfo.kind === 'recurring'
+                          ? styles.badgeRecurring
+                          : scheduleInfo.kind === 'once'
+                            ? styles.badgeOnce
+                            : styles.badgeMuted,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          scheduleInfo.kind !== 'none' && styles.badgeTextStrong,
+                        ]}
+                      >
+                        {scheduleInfo.badge}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text numberOfLines={2} style={styles.itemBody}>
+                  {item.body}
+                </Text>
+
+                {scheduleInfo.detail ? (
+                  <Text style={styles.scheduleDetail}>{scheduleInfo.detail}</Text>
+                ) : null}
+              </Pressable>
+            </Link>
+          )
+        }}
       />
 
       <Pressable
@@ -116,19 +168,48 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    gap: 6,
+  },
+  itemHeader: {
+    gap: 8,
   },
   itemTitle: {
     fontSize: 18,
     fontWeight: '600',
   },
+  badges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeMuted: {
+    backgroundColor: '#f0f0f0',
+  },
+  badgeOnce: {
+    backgroundColor: '#e8f1ff',
+  },
+  badgeRecurring: {
+    backgroundColor: '#eaf7ee',
+  },
+  badgeText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  badgeTextStrong: {
+    color: '#111',
+  },
   itemBody: {
-    marginTop: 4,
     color: '#333',
   },
-  itemStatus: {
-    marginTop: 6,
-    color: '#888',
-    fontSize: 12,
+  scheduleDetail: {
+    fontSize: 13,
+    color: '#555',
   },
   empty: {
     textAlign: 'center',

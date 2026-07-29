@@ -34,13 +34,15 @@ export function DropdownSelect<T extends string | number>({
       </Pressable>
 
       <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>{label ?? '選択'}</Text>
             <FlatList
               data={options}
               keyExtractor={(item) => String(item.value)}
               style={styles.list}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => {
                 const active = item.value === value
                 return (
@@ -59,7 +61,7 @@ export function DropdownSelect<T extends string | number>({
               }}
             />
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </View>
   )

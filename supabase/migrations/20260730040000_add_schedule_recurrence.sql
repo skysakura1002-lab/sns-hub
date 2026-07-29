@@ -1,10 +1,9 @@
-alter table public.schedules
-  add column if not exists recurrence_type text,
-  add column if not exists recurrence_interval integer,
-  add column if not exists recurrence_weekday integer,
-  add column if not exists recurrence_day_of_month integer,
-  add column if not exists end_at timestamptz,
-  add column if not exists next_run_at timestamptz;
+alter table public.schedules add column if not exists recurrence_type text;
+alter table public.schedules add column if not exists recurrence_interval integer;
+alter table public.schedules add column if not exists recurrence_weekday integer;
+alter table public.schedules add column if not exists recurrence_day_of_month integer;
+alter table public.schedules add column if not exists end_at timestamptz;
+alter table public.schedules add column if not exists next_run_at timestamptz;
 
 select
   column_name,
