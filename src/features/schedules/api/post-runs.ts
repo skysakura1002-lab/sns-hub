@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 
 import type { PostRun, PostRunStatus } from '@/features/schedules/types/post-run'
 
+/** アプリからは参照のみ。作成・更新は Edge Function（service_role）側で行う。 */
 export const getPostRuns = async (postId: string): Promise<PostRun[]> => {
   const { data, error } = await supabase
     .from('post_runs')
@@ -22,6 +23,7 @@ type CreatePostRunInput = {
   scheduledFor?: string | null
 }
 
+/** @deprecated クライアントからは使わない。Backend / service_role 用。 */
 export const createPostRun = async ({
   postId,
   scheduleId = null,
@@ -54,6 +56,7 @@ export const createPostRun = async ({
   return data as PostRun
 }
 
+/** @deprecated クライアントからは使わない。Backend / service_role 用。 */
 export const updatePostRunStatus = async (
   id: string,
   status: PostRunStatus,
