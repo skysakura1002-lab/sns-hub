@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Button, StyleSheet, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
-import { deletePost, getPostById, updatePost } from '@/features/posts/api/posts'
+import { deletePost, duplicatePost, getPostById, updatePost } from '@/features/posts/api/posts'
+import { createTemplate } from '@/features/templates/api/templates'
 
 export default function PostDetailScreen() {
   const router = useRouter()
@@ -53,6 +54,37 @@ export default function PostDetailScreen() {
       Alert.alert('更新に失敗しました', error instanceof Error ? error.message : 'Unknown error')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleDuplicate = async () => {
+    if (!id) return
+
+    try {
+      const duplicated = await duplicatePost(id)
+
+      router.replace({
+        pathname: '/posts/[id]',
+        params: {
+          id: duplicated.id,
+        },
+      })
+    } catch (error) {
+      Alert.alert('複製に失敗しました', error instanceof Error ? error.message : 'Unknown error')
+    }
+  }
+
+  const handleSaveAsTemplate = async () => {
+    try {
+      await createTemplate({
+        name: title.trim() || '無題のテンプレート',
+        title: title.trim() || undefined,
+        body,
+      })
+
+      Alert.alert('テンプレートに保存しました')
+    } catch (error) {
+      Alert.alert('保存に失敗しました', error instanceof Error ? error.message : 'Unknown error')
     }
   }
 
@@ -115,6 +147,20 @@ export default function PostDetailScreen() {
         title={isSaving ? '保存中...' : '変更を保存'}
         onPress={() => {
           void handleSave()
+        }}
+      />
+
+      <Button
+        title="複製して新しい投稿を作る"
+        onPress={() => {
+          void handleDuplicate()
+        }}
+      />
+
+      <Button
+        title="テンプレートとして保存"
+        onPress={() => {
+          void handleSaveAsTemplate()
         }}
       />
 

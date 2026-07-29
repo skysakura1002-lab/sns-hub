@@ -6,7 +6,13 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'ホーム',
+          title: '投稿',
+        }}
+      />
+      <Tabs.Screen
+        name="templates"
+        options={{
+          title: 'テンプレート',
         }}
       />
     </Tabs>

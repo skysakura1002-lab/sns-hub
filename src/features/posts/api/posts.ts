@@ -96,3 +96,32 @@ export const deletePost = async (id: string) => {
     throw new Error(error.message)
   }
 }
+
+export const duplicatePost = async (id: string) => {
+  const sourcePost = await getPostById(id)
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error('User is not authenticated')
+  }
+
+  const { data, error } = await supabase
+    .from('posts')
+    .insert({
+      user_id: user.id,
+      title: sourcePost.title ? `${sourcePost.title} コピー` : null,
+      body: sourcePost.body,
+      status: 'draft',
+    })
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data as Post
+}
