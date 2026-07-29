@@ -1,38 +1,33 @@
 import { useEffect, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
 
-import type { AuthSession } from '@/features/auth/types'
 import { supabase } from '@/lib/supabase'
 
-export function useAuth() {
-  const [session, setSession] = useState<AuthSession | null>(null)
-  const [loading, setLoading] = useState(true)
+export const useSession = () => {
+  const [session, setSession] = useState<Session | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    let mounted = true
-
     void supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return
       setSession(data.session)
-      setLoading(false)
+      setIsLoading(false)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
-      setLoading(false)
+      setIsLoading(false)
     })
 
     return () => {
-      mounted = false
       subscription.unsubscribe()
     }
   }, [])
 
   return {
     session,
-    user: session?.user ?? null,
-    loading,
+    isLoading,
     isAuthenticated: !!session,
   }
 }

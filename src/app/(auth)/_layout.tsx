@@ -1,12 +1,5 @@
 import { Stack } from 'expo-router'
 
 export default function AuthLayout() {
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerTitle: 'SNS Hub',
-      }}
-    />
-  )
+  return <Stack screenOptions={{ headerShown: false }} />
 }

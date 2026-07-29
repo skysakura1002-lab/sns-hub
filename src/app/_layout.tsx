@@ -1,34 +1,38 @@
 import 'react-native-gesture-handler'
 
-import { Stack } from 'expo-router'
-import { ActivityIndicator, View } from 'react-native'
+import { Stack, useRouter, useSegments } from 'expo-router'
+import { useEffect } from 'react'
 import { StatusBar } from 'expo-status-bar'
 
-import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useSession } from '@/features/auth/hooks/useSession'
 
 export default function RootLayout() {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, isLoading } = useSession()
+  const router = useRouter()
+  const segments = useSegments()
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" />
-        <StatusBar style="auto" />
-      </View>
-    )
+  useEffect(() => {
+    if (isLoading) return
+
+    const isAuthRoute = segments[0] === '(auth)'
+
+    if (!isAuthenticated && !isAuthRoute) {
+      router.replace('/(auth)/login')
+    }
+
+    if (isAuthenticated && isAuthRoute) {
+      router.replace('/(tabs)')
+    }
+  }, [isAuthenticated, isLoading, router, segments])
+
+  if (isLoading) {
+    return null
   }
 
   return (
     <>
       <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={isAuthenticated}>
-          <Stack.Screen name="(tabs)" />
-        </Stack.Protected>
-        <Stack.Protected guard={!isAuthenticated}>
-          <Stack.Screen name="(auth)" />
-        </Stack.Protected>
-      </Stack>
+      <Stack screenOptions={{ headerShown: false }} />
     </>
   )
 }
