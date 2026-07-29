@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   Button,
-  Pressable,
+  ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from 'react-native'
@@ -14,13 +13,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { getPostTargets, upsertPostTarget } from '@/features/posts/api/post-targets'
 import { deletePost, duplicatePost, getPostById, updatePost } from '@/features/posts/api/posts'
 import {
-  SOCIAL_PROVIDER_LABELS,
-  SOCIAL_PROVIDERS,
-  type SocialProvider,
-} from '@/features/posts/types/post-target'
+  PostBodyEditors,
+  toggleBodyEditorKey,
+  type BodyEditorKey,
+} from '@/features/posts/components/PostBodyEditors'
+import { SOCIAL_PROVIDERS, type SocialProvider } from '@/features/posts/types/post-target'
+import { getScheduleByPostId, upsertSchedule } from '@/features/schedules/api/schedules'
+import { ScheduleTimingFields } from '@/features/schedules/components/ScheduleTimingFields'
+import {
+  formatTokyoDateTime,
+  parseTokyoDateTimeInput,
+} from '@/features/schedules/utils/tokyo-datetime'
 import { createTemplate } from '@/features/templates/api/templates'
-
-type EditorTab = 'common' | SocialProvider
 
 export default function PostDetailScreen() {
   const router = useRouter()
@@ -34,7 +38,9 @@ export default function PostDetailScreen() {
     instagram: '',
     threads: '',
   })
-  const [activeTab, setActiveTab] = useState<EditorTab>('common')
+  const [selectedKeys, setSelectedKeys] = useState<BodyEditorKey[]>([...SOCIAL_PROVIDERS])
+  const [isScheduled, setIsScheduled] = useState(false)
+  const [scheduledAtText, setScheduledAtText] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -43,7 +49,11 @@ export default function PostDetailScreen() {
 
     const loadPost = async () => {
       try {
-        const [post, targets] = await Promise.all([getPostById(id), getPostTargets(id)])
+        const [post, targets, schedule] = await Promise.all([
+          getPostById(id),
+          getPostTargets(id),
+          getScheduleByPostId(id),
+        ])
 
         setTitle(post.title ?? '')
         setCommonBody(post.body)
@@ -53,6 +63,23 @@ export default function PostDetailScreen() {
           instagram: targets.find((target) => target.provider === 'instagram')?.body ?? post.body,
           threads: targets.find((target) => target.provider === 'threads')?.body ?? post.body,
         })
+
+        const existingProviders = SOCIAL_PROVIDERS.filter((provider) =>
+          targets.some((target) => target.provider === provider),
+        )
+        const providers = existingProviders.length > 0 ? existingProviders : [...SOCIAL_PROVIDERS]
+
+        setSelectedKeys(
+          providers.length >= 2 ? providers : (['common', ...providers] as BodyEditorKey[]),
+        )
+
+        if (schedule?.enabled && schedule.scheduled_at) {
+          setIsScheduled(true)
+          setScheduledAtText(formatTokyoDateTime(new Date(schedule.scheduled_at)))
+        } else {
+          setIsScheduled(false)
+          setScheduledAtText('')
+        }
       } catch (error) {
         console.error(error)
         Alert.alert(
@@ -67,30 +94,30 @@ export default function PostDetailScreen() {
     void loadPost()
   }, [id])
 
-  const tabs = useMemo(
-    () =>
-      [
-        { key: 'common' as const, label: '共通' },
-        ...SOCIAL_PROVIDERS.map((provider) => ({
-          key: provider,
-          label: SOCIAL_PROVIDER_LABELS[provider],
-        })),
-      ] as const,
-    [],
-  )
+  const handleToggleKey = (key: BodyEditorKey) => {
+    setSelectedKeys((current) => toggleBodyEditorKey(current, key))
+  }
 
-  const activeBody = activeTab === 'common' ? commonBody : providerBodies[activeTab]
-
-  const setActiveBody = (value: string) => {
-    if (activeTab === 'common') {
-      setCommonBody(value)
-      return
-    }
-
+  const handleChangeProviderBody = (provider: SocialProvider, value: string) => {
     setProviderBodies((current) => ({
       ...current,
-      [activeTab]: value,
+      [provider]: value,
     }))
+  }
+
+  const selectedProviders = SOCIAL_PROVIDERS.filter((provider) => selectedKeys.includes(provider))
+
+  const resolveScheduledAtIso = (): string | null => {
+    if (!isScheduled) {
+      return null
+    }
+
+    const parsed = parseTokyoDateTimeInput(scheduledAtText)
+    if (!parsed) {
+      throw new Error('日時は YYYY/MM/DD HH:mm 形式で入力してください（例: 2026/08/10 20:00）')
+    }
+
+    return parsed.toISOString()
   }
 
   const handleSave = async () => {
@@ -99,20 +126,28 @@ export default function PostDetailScreen() {
     try {
       setIsSaving(true)
 
+      const scheduledAt = resolveScheduledAtIso()
+
       await updatePost(id, {
         title: title.trim() || undefined,
         body: commonBody,
       })
 
       await Promise.all(
-        SOCIAL_PROVIDERS.map((provider) =>
+        selectedProviders.map((provider) =>
           upsertPostTarget({
             postId: id,
             provider,
-            body: providerBodies[provider],
+            body: providerBodies[provider] || commonBody,
           }),
         ),
       )
+
+      await upsertSchedule({
+        postId: id,
+        scheduledAt,
+        enabled: isScheduled,
+      })
 
       router.back()
     } catch (error) {
@@ -129,14 +164,20 @@ export default function PostDetailScreen() {
       const duplicated = await duplicatePost(id)
 
       await Promise.all(
-        SOCIAL_PROVIDERS.map((provider) =>
+        selectedProviders.map((provider) =>
           upsertPostTarget({
             postId: duplicated.id,
             provider,
-            body: providerBodies[provider],
+            body: providerBodies[provider] || commonBody,
           }),
         ),
       )
+
+      await upsertSchedule({
+        postId: duplicated.id,
+        scheduledAt: resolveScheduledAtIso(),
+        enabled: isScheduled,
+      })
 
       router.replace({
         pathname: '/posts/[id]',
@@ -200,7 +241,7 @@ export default function PostDetailScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <TextInput
         placeholder="タイトル"
         style={styles.input}
@@ -208,58 +249,48 @@ export default function PostDetailScreen() {
         onChangeText={setTitle}
       />
 
-      <View style={styles.tabs}>
-        {tabs.map((tab) => {
-          const selected = activeTab === tab.key
-          return (
-            <Pressable
-              key={tab.key}
-              style={[styles.tab, selected && styles.tabSelected]}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{tab.label}</Text>
-            </Pressable>
-          )
-        })}
+      <PostBodyEditors
+        selectedKeys={selectedKeys}
+        onToggleKey={handleToggleKey}
+        commonBody={commonBody}
+        onChangeCommonBody={setCommonBody}
+        providerBodies={providerBodies}
+        onChangeProviderBody={handleChangeProviderBody}
+      />
+
+      <ScheduleTimingFields
+        isScheduled={isScheduled}
+        onChangeIsScheduled={setIsScheduled}
+        scheduledAtText={scheduledAtText}
+        onChangeScheduledAtText={setScheduledAtText}
+      />
+
+      <View style={styles.actions}>
+        <Button
+          disabled={isSaving}
+          title={isSaving ? '保存中...' : '変更を保存'}
+          onPress={() => {
+            void handleSave()
+          }}
+        />
+
+        <Button
+          title="複製して新しい投稿を作る"
+          onPress={() => {
+            void handleDuplicate()
+          }}
+        />
+
+        <Button
+          title="テンプレートとして保存"
+          onPress={() => {
+            void handleSaveAsTemplate()
+          }}
+        />
+
+        <Button color="red" title="削除" onPress={handleDelete} />
       </View>
-
-      <Text style={styles.sectionLabel}>
-        {activeTab === 'common' ? '共通文章' : `${SOCIAL_PROVIDER_LABELS[activeTab]} 用本文`}
-      </Text>
-
-      <TextInput
-        multiline
-        placeholder="投稿内容"
-        style={[styles.input, styles.body]}
-        textAlignVertical="top"
-        value={activeBody}
-        onChangeText={setActiveBody}
-      />
-
-      <Button
-        disabled={isSaving}
-        title={isSaving ? '保存中...' : '変更を保存'}
-        onPress={() => {
-          void handleSave()
-        }}
-      />
-
-      <Button
-        title="複製して新しい投稿を作る"
-        onPress={() => {
-          void handleDuplicate()
-        }}
-      />
-
-      <Button
-        title="テンプレートとして保存"
-        onPress={() => {
-          void handleSaveAsTemplate()
-        }}
-      />
-
-      <Button color="red" title="削除" onPress={handleDelete} />
-    </View>
+    </ScrollView>
   )
 }
 
@@ -271,7 +302,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
     gap: 12,
     backgroundColor: '#fff',
@@ -284,34 +315,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
   },
-  body: {
-    minHeight: 160,
-  },
-  tabs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  actions: {
     gap: 8,
-  },
-  tab: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  tabSelected: {
-    backgroundColor: '#111',
-    borderColor: '#111',
-  },
-  tabText: {
-    color: '#111',
-    fontWeight: '600',
-  },
-  tabTextSelected: {
-    color: '#fff',
-  },
-  sectionLabel: {
-    fontSize: 14,
-    color: '#666',
+    paddingBottom: 24,
   },
 })
