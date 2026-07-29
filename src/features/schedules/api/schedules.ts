@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 
-import type { Schedule } from '@/features/schedules/types/schedule'
+import type { RecurrenceType, Schedule, ScheduleType } from '@/features/schedules/types/schedule'
 
 export const getScheduleByPostId = async (postId: string): Promise<Schedule | null> => {
   const { data, error } = await supabase
@@ -16,13 +16,20 @@ export const getScheduleByPostId = async (postId: string): Promise<Schedule | nu
   return data as Schedule | null
 }
 
-type UpsertScheduleInput = {
+export type UpsertScheduleInput = {
   postId: string
+  scheduleType: ScheduleType
   scheduledAt: string | null
+  recurrenceType?: RecurrenceType | null
+  recurrenceInterval?: number | null
+  recurrenceWeekday?: number | null
+  recurrenceDayOfMonth?: number | null
+  endAt?: string | null
+  nextRunAt?: string | null
   enabled: boolean
 }
 
-export const upsertSchedule = async ({ postId, scheduledAt, enabled }: UpsertScheduleInput) => {
+export const upsertSchedule = async (input: UpsertScheduleInput) => {
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -35,12 +42,18 @@ export const upsertSchedule = async ({ postId, scheduledAt, enabled }: UpsertSch
     .from('schedules')
     .upsert(
       {
-        post_id: postId,
+        post_id: input.postId,
         user_id: user.id,
-        schedule_type: 'once',
-        scheduled_at: scheduledAt,
+        schedule_type: input.scheduleType,
+        scheduled_at: input.scheduledAt,
         timezone: 'Asia/Tokyo',
-        enabled,
+        recurrence_type: input.recurrenceType ?? null,
+        recurrence_interval: input.recurrenceInterval ?? null,
+        recurrence_weekday: input.recurrenceWeekday ?? null,
+        recurrence_day_of_month: input.recurrenceDayOfMonth ?? null,
+        end_at: input.endAt ?? null,
+        next_run_at: input.nextRunAt ?? null,
+        enabled: input.enabled,
         updated_at: new Date().toISOString(),
       },
       {

@@ -12,7 +12,8 @@ import {
 import { SOCIAL_PROVIDERS, type SocialProvider } from '@/features/posts/types/post-target'
 import { upsertSchedule } from '@/features/schedules/api/schedules'
 import { ScheduleTimingFields } from '@/features/schedules/components/ScheduleTimingFields'
-import { parseTokyoDateTimeInput } from '@/features/schedules/utils/tokyo-datetime'
+import type { RecurrenceType, ScheduleMode } from '@/features/schedules/types/schedule'
+import { buildUpsertScheduleInput } from '@/features/schedules/utils/build-upsert-schedule'
 
 export default function NewPostScreen() {
   const router = useRouter()
@@ -25,8 +26,13 @@ export default function NewPostScreen() {
     threads: '',
   })
   const [selectedKeys, setSelectedKeys] = useState<BodyEditorKey[]>([...SOCIAL_PROVIDERS])
-  const [isScheduled, setIsScheduled] = useState(false)
-  const [scheduledAtText, setScheduledAtText] = useState('')
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null)
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('weekly')
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [recurrenceWeekday, setRecurrenceWeekday] = useState<number | null>(null)
+  const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState<number | null>(null)
+  const [endAt, setEndAt] = useState<Date | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleToggleKey = (key: BodyEditorKey) => {
@@ -43,15 +49,6 @@ export default function NewPostScreen() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
-
-      let scheduledAt: string | null = null
-      if (isScheduled) {
-        const parsed = parseTokyoDateTimeInput(scheduledAtText)
-        if (!parsed) {
-          throw new Error('日時は YYYY/MM/DD HH:mm 形式で入力してください（例: 2026/08/10 20:00）')
-        }
-        scheduledAt = parsed.toISOString()
-      }
 
       const selectedProviders = SOCIAL_PROVIDERS.filter((provider) =>
         selectedKeys.includes(provider),
@@ -72,11 +69,17 @@ export default function NewPostScreen() {
         ),
       )
 
-      await upsertSchedule({
-        postId: post.id,
-        scheduledAt,
-        enabled: isScheduled,
-      })
+      await upsertSchedule(
+        buildUpsertScheduleInput(post.id, {
+          scheduleMode,
+          scheduledAt,
+          recurrenceType,
+          recurrenceInterval,
+          recurrenceWeekday,
+          recurrenceDayOfMonth,
+          endAt,
+        }),
+      )
 
       router.back()
     } catch (error) {
@@ -105,10 +108,20 @@ export default function NewPostScreen() {
       />
 
       <ScheduleTimingFields
-        isScheduled={isScheduled}
-        onChangeIsScheduled={setIsScheduled}
-        scheduledAtText={scheduledAtText}
-        onChangeScheduledAtText={setScheduledAtText}
+        scheduleMode={scheduleMode}
+        onChangeScheduleMode={setScheduleMode}
+        scheduledAt={scheduledAt}
+        onChangeScheduledAt={setScheduledAt}
+        recurrenceType={recurrenceType}
+        onChangeRecurrenceType={setRecurrenceType}
+        recurrenceInterval={recurrenceInterval}
+        onChangeRecurrenceInterval={setRecurrenceInterval}
+        recurrenceWeekday={recurrenceWeekday}
+        onChangeRecurrenceWeekday={setRecurrenceWeekday}
+        recurrenceDayOfMonth={recurrenceDayOfMonth}
+        onChangeRecurrenceDayOfMonth={setRecurrenceDayOfMonth}
+        endAt={endAt}
+        onChangeEndAt={setEndAt}
       />
 
       <View style={styles.actions}>

@@ -20,10 +20,8 @@ import {
 import { SOCIAL_PROVIDERS, type SocialProvider } from '@/features/posts/types/post-target'
 import { getScheduleByPostId, upsertSchedule } from '@/features/schedules/api/schedules'
 import { ScheduleTimingFields } from '@/features/schedules/components/ScheduleTimingFields'
-import {
-  formatTokyoDateTime,
-  parseTokyoDateTimeInput,
-} from '@/features/schedules/utils/tokyo-datetime'
+import type { RecurrenceType, ScheduleMode } from '@/features/schedules/types/schedule'
+import { buildUpsertScheduleInput } from '@/features/schedules/utils/build-upsert-schedule'
 import { createTemplate } from '@/features/templates/api/templates'
 
 export default function PostDetailScreen() {
@@ -39,8 +37,13 @@ export default function PostDetailScreen() {
     threads: '',
   })
   const [selectedKeys, setSelectedKeys] = useState<BodyEditorKey[]>([...SOCIAL_PROVIDERS])
-  const [isScheduled, setIsScheduled] = useState(false)
-  const [scheduledAtText, setScheduledAtText] = useState('')
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null)
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('weekly')
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [recurrenceWeekday, setRecurrenceWeekday] = useState<number | null>(null)
+  const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState<number | null>(null)
+  const [endAt, setEndAt] = useState<Date | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -73,12 +76,29 @@ export default function PostDetailScreen() {
           providers.length >= 2 ? providers : (['common', ...providers] as BodyEditorKey[]),
         )
 
-        if (schedule?.enabled && schedule.scheduled_at) {
-          setIsScheduled(true)
-          setScheduledAtText(formatTokyoDateTime(new Date(schedule.scheduled_at)))
+        if (!schedule?.enabled) {
+          setScheduleMode('now')
+          setScheduledAt(null)
+          setEndAt(null)
+        } else if (schedule.schedule_type === 'recurring') {
+          setScheduleMode('recurring')
+          setScheduledAt(
+            schedule.next_run_at
+              ? new Date(schedule.next_run_at)
+              : schedule.scheduled_at
+                ? new Date(schedule.scheduled_at)
+                : null,
+          )
+          setRecurrenceType(schedule.recurrence_type ?? 'weekly')
+          setRecurrenceInterval(schedule.recurrence_interval ?? 1)
+          setRecurrenceWeekday(schedule.recurrence_weekday)
+          setRecurrenceDayOfMonth(schedule.recurrence_day_of_month)
+          setEndAt(schedule.end_at ? new Date(schedule.end_at) : null)
         } else {
-          setIsScheduled(false)
-          setScheduledAtText('')
+          setScheduleMode('once')
+          setScheduledAt(schedule.scheduled_at ? new Date(schedule.scheduled_at) : null)
+          setRecurrenceType('none')
+          setEndAt(null)
         }
       } catch (error) {
         console.error(error)
@@ -107,17 +127,14 @@ export default function PostDetailScreen() {
 
   const selectedProviders = SOCIAL_PROVIDERS.filter((provider) => selectedKeys.includes(provider))
 
-  const resolveScheduledAtIso = (): string | null => {
-    if (!isScheduled) {
-      return null
-    }
-
-    const parsed = parseTokyoDateTimeInput(scheduledAtText)
-    if (!parsed) {
-      throw new Error('日時は YYYY/MM/DD HH:mm 形式で入力してください（例: 2026/08/10 20:00）')
-    }
-
-    return parsed.toISOString()
+  const scheduleFormState = {
+    scheduleMode,
+    scheduledAt,
+    recurrenceType,
+    recurrenceInterval,
+    recurrenceWeekday,
+    recurrenceDayOfMonth,
+    endAt,
   }
 
   const handleSave = async () => {
@@ -125,8 +142,6 @@ export default function PostDetailScreen() {
 
     try {
       setIsSaving(true)
-
-      const scheduledAt = resolveScheduledAtIso()
 
       await updatePost(id, {
         title: title.trim() || undefined,
@@ -143,11 +158,7 @@ export default function PostDetailScreen() {
         ),
       )
 
-      await upsertSchedule({
-        postId: id,
-        scheduledAt,
-        enabled: isScheduled,
-      })
+      await upsertSchedule(buildUpsertScheduleInput(id, scheduleFormState))
 
       router.back()
     } catch (error) {
@@ -173,11 +184,7 @@ export default function PostDetailScreen() {
         ),
       )
 
-      await upsertSchedule({
-        postId: duplicated.id,
-        scheduledAt: resolveScheduledAtIso(),
-        enabled: isScheduled,
-      })
+      await upsertSchedule(buildUpsertScheduleInput(duplicated.id, scheduleFormState))
 
       router.replace({
         pathname: '/posts/[id]',
@@ -259,10 +266,20 @@ export default function PostDetailScreen() {
       />
 
       <ScheduleTimingFields
-        isScheduled={isScheduled}
-        onChangeIsScheduled={setIsScheduled}
-        scheduledAtText={scheduledAtText}
-        onChangeScheduledAtText={setScheduledAtText}
+        scheduleMode={scheduleMode}
+        onChangeScheduleMode={setScheduleMode}
+        scheduledAt={scheduledAt}
+        onChangeScheduledAt={setScheduledAt}
+        recurrenceType={recurrenceType}
+        onChangeRecurrenceType={setRecurrenceType}
+        recurrenceInterval={recurrenceInterval}
+        onChangeRecurrenceInterval={setRecurrenceInterval}
+        recurrenceWeekday={recurrenceWeekday}
+        onChangeRecurrenceWeekday={setRecurrenceWeekday}
+        recurrenceDayOfMonth={recurrenceDayOfMonth}
+        onChangeRecurrenceDayOfMonth={setRecurrenceDayOfMonth}
+        endAt={endAt}
+        onChangeEndAt={setEndAt}
       />
 
       <View style={styles.actions}>
