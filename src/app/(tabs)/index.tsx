@@ -1,3 +1,4 @@
+import { Link } from 'expo-router'
 import { Button, StyleSheet, Text, View } from 'react-native'
 
 import { signOut } from '@/features/auth/api/auth'
@@ -10,6 +11,10 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>ホーム</Text>
       <Text style={styles.email}>{session?.user.email ?? ''}</Text>
+
+      <Link href="/posts/new" style={styles.link}>
+        新しい投稿を作る
+      </Link>
 
       <Button
         title="ログアウト"
@@ -37,5 +42,11 @@ const styles = StyleSheet.create({
   email: {
     color: '#444',
     marginBottom: 8,
+  },
+  link: {
+    color: '#0a7aff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginVertical: 8,
   },
 })
