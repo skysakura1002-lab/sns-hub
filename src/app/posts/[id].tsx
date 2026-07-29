@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Button, StyleSheet, TextInput, View } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  Button,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
+import { getPostTargets, upsertPostTarget } from '@/features/posts/api/post-targets'
 import { deletePost, duplicatePost, getPostById, updatePost } from '@/features/posts/api/posts'
+import {
+  SOCIAL_PROVIDER_LABELS,
+  SOCIAL_PROVIDERS,
+  type SocialProvider,
+} from '@/features/posts/types/post-target'
 import { createTemplate } from '@/features/templates/api/templates'
+
+type EditorTab = 'common' | SocialProvider
 
 export default function PostDetailScreen() {
   const router = useRouter()
@@ -11,7 +28,13 @@ export default function PostDetailScreen() {
   const id = Array.isArray(rawId) ? rawId[0] : rawId
 
   const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
+  const [commonBody, setCommonBody] = useState('')
+  const [providerBodies, setProviderBodies] = useState<Record<SocialProvider, string>>({
+    x: '',
+    instagram: '',
+    threads: '',
+  })
+  const [activeTab, setActiveTab] = useState<EditorTab>('common')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -20,10 +43,16 @@ export default function PostDetailScreen() {
 
     const loadPost = async () => {
       try {
-        const post = await getPostById(id)
+        const [post, targets] = await Promise.all([getPostById(id), getPostTargets(id)])
 
         setTitle(post.title ?? '')
-        setBody(post.body)
+        setCommonBody(post.body)
+
+        setProviderBodies({
+          x: targets.find((target) => target.provider === 'x')?.body ?? post.body,
+          instagram: targets.find((target) => target.provider === 'instagram')?.body ?? post.body,
+          threads: targets.find((target) => target.provider === 'threads')?.body ?? post.body,
+        })
       } catch (error) {
         console.error(error)
         Alert.alert(
@@ -38,6 +67,32 @@ export default function PostDetailScreen() {
     void loadPost()
   }, [id])
 
+  const tabs = useMemo(
+    () =>
+      [
+        { key: 'common' as const, label: '共通' },
+        ...SOCIAL_PROVIDERS.map((provider) => ({
+          key: provider,
+          label: SOCIAL_PROVIDER_LABELS[provider],
+        })),
+      ] as const,
+    [],
+  )
+
+  const activeBody = activeTab === 'common' ? commonBody : providerBodies[activeTab]
+
+  const setActiveBody = (value: string) => {
+    if (activeTab === 'common') {
+      setCommonBody(value)
+      return
+    }
+
+    setProviderBodies((current) => ({
+      ...current,
+      [activeTab]: value,
+    }))
+  }
+
   const handleSave = async () => {
     if (!id) return
 
@@ -46,8 +101,18 @@ export default function PostDetailScreen() {
 
       await updatePost(id, {
         title: title.trim() || undefined,
-        body,
+        body: commonBody,
       })
+
+      await Promise.all(
+        SOCIAL_PROVIDERS.map((provider) =>
+          upsertPostTarget({
+            postId: id,
+            provider,
+            body: providerBodies[provider],
+          }),
+        ),
+      )
 
       router.back()
     } catch (error) {
@@ -62,6 +127,16 @@ export default function PostDetailScreen() {
 
     try {
       const duplicated = await duplicatePost(id)
+
+      await Promise.all(
+        SOCIAL_PROVIDERS.map((provider) =>
+          upsertPostTarget({
+            postId: duplicated.id,
+            provider,
+            body: providerBodies[provider],
+          }),
+        ),
+      )
 
       router.replace({
         pathname: '/posts/[id]',
@@ -79,7 +154,7 @@ export default function PostDetailScreen() {
       await createTemplate({
         name: title.trim() || '無題のテンプレート',
         title: title.trim() || undefined,
-        body,
+        body: commonBody,
       })
 
       Alert.alert('テンプレートに保存しました')
@@ -133,13 +208,32 @@ export default function PostDetailScreen() {
         onChangeText={setTitle}
       />
 
+      <View style={styles.tabs}>
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.key
+          return (
+            <Pressable
+              key={tab.key}
+              style={[styles.tab, selected && styles.tabSelected]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{tab.label}</Text>
+            </Pressable>
+          )
+        })}
+      </View>
+
+      <Text style={styles.sectionLabel}>
+        {activeTab === 'common' ? '共通文章' : `${SOCIAL_PROVIDER_LABELS[activeTab]} 用本文`}
+      </Text>
+
       <TextInput
         multiline
         placeholder="投稿内容"
         style={[styles.input, styles.body]}
         textAlignVertical="top"
-        value={body}
-        onChangeText={setBody}
+        value={activeBody}
+        onChangeText={setActiveBody}
       />
 
       <Button
@@ -179,7 +273,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    gap: 16,
+    gap: 12,
     backgroundColor: '#fff',
   },
   input: {
@@ -192,5 +286,32 @@ const styles = StyleSheet.create({
   },
   body: {
     minHeight: 160,
+  },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tab: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  tabSelected: {
+    backgroundColor: '#111',
+    borderColor: '#111',
+  },
+  tabText: {
+    color: '#111',
+    fontWeight: '600',
+  },
+  tabTextSelected: {
+    color: '#fff',
+  },
+  sectionLabel: {
+    fontSize: 14,
+    color: '#666',
   },
 })
