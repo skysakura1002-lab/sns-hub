@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "Application",
-    "slug": "Application",
+    "name": "SNS Hub",
+    "slug": "sns-hub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "sns-hub",
     "ios": {
       "supportsTablet": true
     },
@@ -20,6 +21,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": ["expo-router"]
   }
 }
